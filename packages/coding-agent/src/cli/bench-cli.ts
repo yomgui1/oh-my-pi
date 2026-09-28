@@ -42,9 +42,11 @@ import {
 import { createLiveBoard, type LiveBoardOutput } from "@oh-my-pi/pi-tui/chrome/live-board";
 import { formatCost } from "@oh-my-pi/pi-tui/overlays/agent-hub-renderer";
 
+import { LOCAL_OPENAI_COMPAT_PROVIDERS } from "@oh-my-pi/pi-catalog/compat/resolve";
 import { cfgTierAnthropic, cfgTierGoogle, cfgTierOpenai } from "../session/settings";
 
 const DEFAULT_PAR = 4;
+const DEFAULT_PAR_LOCAL = 1;
 const DEFAULT_CACHE_MAX_TOKENS = 64;
 const DEFAULT_CACHE_PREFIX_BYTES = 8_192;
 const DEFAULT_CACHE_PAIRS = 1;
@@ -1153,6 +1155,13 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 	try {
 		const targets = await resolveBenchTargets(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
 		if (cacheMode) assertCacheModeSupported(targets);
+		if (!json && command.flags.par === undefined && targets.some(t => LOCAL_OPENAI_COMPAT_PROVIDERS[t.model.provider])) {
+			writeStderr(
+				chalk.dim(
+					`local provider detected — using --par ${DEFAULT_PAR_LOCAL} for those models (KV cache thrash would dominate with ${DEFAULT_PAR} parallel slots)\n`,
+				),
+			);
+		}
 		// Explicit `--service-tier` (a single value broadcast across families) wins;
 		// otherwise fall back to the configured per-family `tier.*` settings. Each
 		// model resolves its own family's tier below before reaching the wire.
@@ -1299,16 +1308,17 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 			// Steps run back to back so one phase's load never skews the next.
 			for (const step of steps) {
 				const { phase } = step;
+				const stepPar = LOCAL_OPENAI_COMPAT_PROVIDERS[model.provider] ? Math.min(step.concurrency, DEFAULT_PAR_LOCAL) : step.concurrency;
 				if (!json && phase) {
 					print(
-						`  ${chalk.bold(PHASE_LABELS[phase])} ${chalk.dim(`· ${step.concurrency} concurrent · ${step.runs} runs`)}`,
+						`  ${chalk.bold(PHASE_LABELS[phase])} ${chalk.dim(`· ${stepPar} concurrent · ${step.runs} runs`)}`,
 					);
 				}
 				const finished: BenchRunResult[] = [];
 				const startedAt = now();
 				// Runs finish out of order under concurrency; lines print in index order.
 				let nextToPrint = 0;
-				await runWithConcurrency(step.runs, step.concurrency, async index => {
+				await runWithConcurrency(step.runs, stepPar, async index => {
 					const runIndex = offset + index;
 					const sessionId = runIndex === 0 ? testSessionId : randomSessionId();
 					const challenge = buildBenchChallenge(step.kinds[index % step.kinds.length]!, {
@@ -1343,7 +1353,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 					progress.inFlight--;
 					progress.completed++;
 					if (!result.ok) progress.failed++;
-					if (phase) phases[phase] = buildPhaseReport(step.concurrency, finished, now() - startedAt);
+					if (phase) phases[phase] = buildPhaseReport(stepPar, finished, now() - startedAt);
 					row.report = buildModelReport(selector, model, thinking, results, phases);
 					board?.repaint();
 					if (!json) {

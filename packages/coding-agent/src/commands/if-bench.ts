@@ -17,7 +17,7 @@ export default class IfBench extends Command {
 		length: Flags.integer({ description: "Character-array length, even, 8-26 (default: 24)" }),
 		"max-tokens": Flags.integer({ description: "Max output tokens per turn (default: 32768)" }),
 		"nya-max": Flags.integer({ description: "Longest accepted cat sound in nya{1,N} (default: 8)" }),
-		par: Flags.integer({ description: "Models benchmarked concurrently (default: 4)" }),
+		par: Flags.integer({ description: "Models benchmarked concurrently (default: 4; 1 for local providers)" }),
 		json: Flags.boolean({ description: "Output JSON" }),
 	};
 

@@ -4,6 +4,9 @@
 
 ### Added
 
+#### Bench
+
+- Bench auto-sets `--par 1` for local OpenAI-compatible providers (llama.cpp, Ollama, LM Studio, Text Generation Inference) when `--par` is not explicitly provided, since KV-cache sharing only works when all requests read from identical positions; a warning is printed when `--par` is overridden and set higher than 1. ([#12981](https://github.com/can1357/oh-my-pi/pull/12981))
 - The shell's `cp` builtin accepts macOS's `-c` (clone where possible, else copy; same as `--reflink=auto`).
 
 ### Changed

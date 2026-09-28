@@ -318,3 +318,65 @@ describe("bench --detailed", () => {
 		await expect(runDetailed({ par: 1 })).rejects.toThrow("--par");
 	});
 });
+import { LOCAL_OPENAI_COMPAT_PROVIDERS } from "@oh-my-pi/pi-catalog/compat/resolve";
+
+const localModel: Model<Api> = buildModel({
+	provider: "llama.cpp",
+	id: "local-model",
+	name: "local-model",
+	api: "openai-completions",
+	baseUrl: "http://localhost:8080/v1",
+	reasoning: false,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	maxTokens: 4096,
+	contextWindow: 128_000,
+});
+
+const localRegistry: BenchModelRegistry = {
+	getAll: () => [localModel],
+	getAvailable: () => [localModel],
+	getApiKey: async () => "not-needed",
+	resolver: () => (() => Promise.resolve("not-needed")) as unknown as ApiKeyResolver,
+};
+
+describe("bench local-provider defaults", () => {
+	it("prints a warning when a local provider target has no explicit --par", async () => {
+		const stderr: string[] = [];
+		const _summary = await runBenchCommand(
+			{ models: ["llama.cpp/local-model"], flags: { runs: 2, prompt: "hi" } },
+			{
+				createRuntime: async () => ({ modelRegistry: localRegistry, close: () => {} }),
+				randomSessionId: () => "sess",
+				writeStdout: () => {},
+				writeStderr: (t: string) => stderr.push(t),
+				setExitCode: () => {},
+				streamSimple: () => streamOf(message({})),
+				now: () => 0,
+				random: () => 0,
+				stdoutIsTTY: false,
+			},
+		);
+		expect(stderr.find(s => s.toLowerCase().includes("local provider"))).toBeDefined();
+	});
+
+	it("does not print the warning when --par is explicit", async () => {
+		const stderr: string[] = [];
+		const _summary = await runBenchCommand(
+			{ models: ["llama.cpp/local-model"], flags: { par: 2, prompt: "hi" } },
+			{
+				createRuntime: async () => ({ modelRegistry: localRegistry, close: () => {} }),
+				randomSessionId: () => "sess",
+				writeStdout: () => {},
+				writeStderr: (t: string) => stderr.push(t),
+				setExitCode: () => {},
+				streamSimple: () => streamOf(message({})),
+				now: () => 0,
+				random: () => 0,
+				stdoutIsTTY: false,
+			},
+		);
+		// Warning only printed when --par is NOT explicit.
+		expect(stderr.find(s => s.toLowerCase().includes("local provider"))).toBeUndefined();
+	});
+});
